@@ -12,7 +12,7 @@
 
   import config from '@/config';
   import { indent } from '@/lib/utils';
-  import { useQuery } from '@/lib/hooks';
+  import { useFlag, useQuery } from '@/lib/hooks';
 
   import Icon from './Icon.svelte';
   import Dropdown from './Dropdown.svelte';
@@ -28,12 +28,17 @@
     type Submodule
   } from '@/api/artifacts';
   import { computeArtifactUrl, type LocatableArtifact } from '@/lib/artifact';
+  import TransparentButton from '@/components/TransparentButton.svelte';
+  import ConfirmationModal from '@/components/ConfirmationModal.svelte';
+  import ErrorModal from '@/components/ErrorModal.svelte';
 
   export let type: 'module' | 'provider';
   export let namespace: string;
   export let name: string;
   export let provider: string = '';
   export let version: string = '';
+
+  const [deleteModalEnabled, showDeleteModal, hideDeleteModal] = useFlag(false);
 
   const moduleTemplate = `
     module "${name}" {
@@ -147,6 +152,24 @@
     }
   });
 
+  let deleteErrorMessage: string = '';
+
+  const onDelete = async () => {
+    let result = await Artifacts.delete(namespace, name, provider, version);
+    if (result.status === 'OK') {
+      versions = versions.filter(v => v !== version);
+
+      if (versions.length > 0) {
+        const lastVersion = versions[0];
+        onOptionSelect(lastVersion);
+      } else {
+        push('/');
+      }
+    } else {
+      deleteErrorMessage = result.message!;
+    }
+  };
+
   const onSubmoduleSelect = async (submodulePath: string) => {
     if (type !== 'module') return;
 
@@ -233,6 +256,9 @@
             </h3>
           </div>
         </div>
+        <TransparentButton onClick={showDeleteModal}>
+          <Icon name="trash" />
+        </TransparentButton>
         <div class="w-full lg:w-auto">
           <Dropdown {label} options={versions} onSelect={onOptionSelect} />
         </div>
@@ -296,3 +322,15 @@
     </section>
   {/if}
 </main>
+
+<ConfirmationModal
+  title={`Remove artifact ${[namespace, name, provider, version].filter(e => e).join('/')}`}
+  enabled={$deleteModalEnabled}
+  onClose={hideDeleteModal}
+  onSubmit={onDelete}>
+  Are you sure?
+</ConfirmationModal>
+
+{#if deleteErrorMessage}
+  <ErrorModal bind:message={deleteErrorMessage} />
+{/if}
